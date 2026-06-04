@@ -180,34 +180,8 @@ export default function App() {
   return (
     <div className="relative">
       
-      {/* FLOATING WORKSPACE CONTROLLER - TOGGLES BLACKPRINT BLUEPRINTS HUB */}
-      <div className="fixed bottom-6 right-6 z-50">
-        <button
-          onClick={() => setShowWorkspace(!showWorkspace)}
-          className="bg-slate-900 border border-slate-800 text-white font-sans text-xs font-bold px-4 py-2.5 rounded-full shadow-2xl hover:scale-103 active:scale-97 transition duration-150 flex items-center gap-2 cursor-pointer"
-        >
-          {showWorkspace ? (
-            <>
-              <Terminal className="w-4 h-4 text-brand-coral animate-pulse" /> Hide Technical Blueprint
-            </>
-          ) : (
-            <>
-              <Layers className="w-4 h-4 text-brand-coral" /> Explore Platform Blueprint Hub
-            </>
-          )}
-        </button>
-      </div>
-
       {/* CORE VIEW LAYOUT */}
-      {showWorkspace ? (
-        <div className="min-h-screen bg-slate-950 py-12 px-4">
-          <div className="max-w-5xl mx-auto space-y-6 text-center text-white mb-2 select-none">
-            <h1 className="font-display text-3xl font-extrabold tracking-tight">Interactive Platform Architectures</h1>
-            <p className="text-slate-400 text-xs max-w-xl mx-auto">Toggle this hub off at any point using the floating tab on your bottom right. Explore registered entities, rest maps, and safety compliance policies live.</p>
-          </div>
-          <BlueprintHub />
-        </div>
-      ) : currentUser && token ? (
+      {currentUser && token ? (
         <AppDashboard 
           token={token} 
           user={currentUser} 
