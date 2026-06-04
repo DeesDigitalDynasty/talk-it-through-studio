@@ -1,0 +1,6 @@
+{
+  "name": "TalkItThrough",
+  "description": "A mental health support platform for Nigerian men combining AI therapy chat, crisis help, peer support, faith resources, and legal compliance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
