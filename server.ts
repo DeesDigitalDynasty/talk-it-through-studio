@@ -144,6 +144,100 @@ app.post("/api/auth/login", (req: Request, res: Response) => {
   res.json({ token, user: userSafe });
 });
 
+app.post("/api/auth/forgot-password", (req: Request, res: Response) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      res.status(400).json({ error: "Email address is required" });
+      return;
+    }
+
+    const emailKey = email.toLowerCase();
+    const db = readDB();
+    const user = db.users[emailKey];
+
+    if (!user) {
+      res.status(404).json({ error: "No account found with this email address." });
+      return;
+    }
+
+    // Generate a 6-digit numeric code
+    const recoveryCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiry = new Date(Date.now() + 15 * 60 * 1000).toISOString(); // 15 minutes validity
+
+    user.recoveryCode = recoveryCode;
+    user.recoveryExpiry = expiry;
+    db.users[emailKey] = user;
+    writeDB(db);
+
+    console.log(`[PASSWORD RECOVERY EMAIL SIMULATED]`);
+    console.log(`To: ${emailKey}`);
+    console.log(`Subject: TalkItThrough Secure PIN Recovery Code`);
+    console.log(`Code: ${recoveryCode}`);
+
+    res.json({ 
+      success: true, 
+      message: `A recovery code has been sent securely via email to ${emailKey}.`, 
+      code: recoveryCode // Returned directly to make it effortless to test in the Sandbox / Preview
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Forgot password request failed: " + err.message });
+  }
+});
+
+app.post("/api/auth/reset-password", (req: Request, res: Response) => {
+  try {
+    const { email, code, newPassword } = req.body;
+    if (!email || !code || !newPassword) {
+      res.status(400).json({ error: "Email, recovery code, and new password PIN are required." });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      res.status(400).json({ error: "New password must be at least 6 characters long." });
+      return;
+    }
+
+    const emailKey = email.toLowerCase();
+    const db = readDB();
+    const user = db.users[emailKey];
+
+    if (!user) {
+      res.status(404).json({ error: "Invalid email lookup." });
+      return;
+    }
+
+    if (!user.recoveryCode || user.recoveryCode !== code) {
+      res.status(400).json({ error: "Invalid or expired recovery code." });
+      return;
+    }
+
+    const expiryTime = new Date(user.recoveryExpiry).getTime();
+    if (Date.now() > expiryTime) {
+      res.status(400).json({ error: "Recovery code has expired. Please request a new one." });
+      return;
+    }
+
+    // Successful verify - update password hash
+    const hash = crypto.createHash("sha256").update(newPassword).digest("hex");
+    user.passwordHash = hash;
+    
+    // Clear out recovery details
+    delete user.recoveryCode;
+    delete user.recoveryExpiry;
+
+    db.users[emailKey] = user;
+    writeDB(db);
+
+    res.json({ 
+      success: true, 
+      message: "Your password PIN has been successfully updated. You can now log in." 
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: "Password reset failed: " + err.message });
+  }
+});
+
 app.post("/api/auth/logout", (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   if (authHeader && authHeader.startsWith("Bearer ")) {

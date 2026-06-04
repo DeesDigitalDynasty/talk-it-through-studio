@@ -4,7 +4,7 @@ import AppDashboard from "./components/AppDashboard";
 import BlueprintHub from "./components/BlueprintHub";
 import { 
   Heart, Lock, Mail, Users, FileText, CheckCircle2, 
-  HelpCircle, Sparkles, Layers, Terminal, AlertCircle 
+  HelpCircle, Sparkles, Layers, Terminal, AlertCircle, Loader2 
 } from "lucide-react";
 import { SignUpInput } from "./types";
 
@@ -14,8 +14,14 @@ export default function App() {
   const [token, setToken] = useState<string | null>(null);
   
   // Navigation states
-  const [authModal, setAuthModal] = useState<"login" | "register" | null>(null);
+  const [authModal, setAuthModal] = useState<"login" | "register" | "forgot" | "reset" | null>(null);
   const [showWorkspace, setShowWorkspace] = useState(false);
+
+  // Recovery States
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetPassword, setResetPassword] = useState("");
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Registration states
   const [regForm, setRegForm] = useState({
@@ -165,6 +171,72 @@ export default function App() {
       });
   };
 
+  const handleForgotPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+    setSuccessMessage(null);
+
+    fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: forgotEmail })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setAuthLoading(false);
+        if (data.error) {
+          setAuthError(data.error);
+        } else if (data.success) {
+          const helperMsg = data.code 
+            ? `${data.message} (For testing: use code ${data.code})`
+            : data.message;
+          setSuccessMessage(helperMsg);
+          // Set fields & auto transition to verification screen
+          setResetCode(data.code || "");
+          setAuthModal("reset");
+        }
+      })
+      .catch(err => {
+        setAuthLoading(false);
+        setAuthError("Failed to request recovery code: " + err.message);
+      });
+  };
+
+  const handleResetPassword = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    setAuthError(null);
+    setSuccessMessage(null);
+
+    fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ 
+        email: forgotEmail, 
+        code: resetCode, 
+        newPassword: resetPassword 
+      })
+    })
+      .then(res => res.json())
+      .then(data => {
+        setAuthLoading(false);
+        if (data.error) {
+          setAuthError(data.error);
+        } else if (data.success) {
+          setSuccessMessage(data.message);
+          setAuthModal("login");
+          // Clear reset input fields
+          setResetCode("");
+          setResetPassword("");
+        }
+      })
+      .catch(err => {
+        setAuthLoading(false);
+        setAuthError("Failed to reset password: " + err.message);
+      });
+  };
+
   const handleLogout = () => {
     if (token) {
       fetch("/api/auth/logout", {
@@ -207,14 +279,34 @@ export default function App() {
               ✕
             </button>
 
+            {authLoading && (
+              <div className="absolute inset-0 bg-white/90 backdrop-blur-[2px] flex flex-col items-center justify-center z-20 animate-fade-in select-none">
+                <div className="text-center space-y-3 p-4">
+                  <Loader2 className="w-9 h-9 text-[#8A1B29] animate-spin mx-auto" />
+                  <p className="text-[10px] uppercase font-mono tracking-widest text-[#8A1B29] font-extrabold">
+                    Processing Request...
+                  </p>
+                  <p className="text-slate-500 text-[10px] font-sans antialiased">
+                    Please wait while we secure your residency profile.
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Title */}
             <div className="text-center space-y-1 select-none">
               <Heart className="w-10 h-10 text-[#8A1B29] fill-[#8A1B29] mx-auto" />
               <h3 className="font-display font-serif font-bold text-slate-950 text-xl mt-3">
-                {authModal === "login" ? "Enter the Safe Haven" : "Create Your Anonymous Account"}
+                {authModal === "login" && "Enter the Safe Haven"}
+                {authModal === "register" && "Create Your Anonymous Account"}
+                {authModal === "forgot" && "Secure Password Recovery"}
+                {authModal === "reset" && "Set Your New Password PIN"}
               </h3>
               <p className="text-slate-700 text-[11px] font-sans">
-                {authModal === "login" ? "Verify your cached credentials." : "NDPR Compliant support system for general mental residency."}
+                {authModal === "login" && "Verify your cached credentials."}
+                {authModal === "register" && "NDPR Compliant support system for general mental residency."}
+                {authModal === "forgot" && "Trigger safety code dispatch to retrieve verified email account."}
+                {authModal === "reset" && "Input your temporary 6-digit recovery PIN to set new credentials."}
               </p>
             </div>
 
@@ -225,8 +317,15 @@ export default function App() {
               </div>
             )}
 
+            {successMessage && (
+              <div className="bg-[#FAF6EC] text-[#8A1B29] p-4 rounded-none border border-[#C5A059] text-[11px] leading-relaxed flex items-start gap-1.5 font-bold">
+                <CheckCircle2 className="w-4 h-4 text-[#C5A059] shrink-0 mt-0.5" />
+                <span>{successMessage}</span>
+              </div>
+            )}
+
             {/* LOGIN PORT */}
-            {authModal === "login" ? (
+            {authModal === "login" && (
               <form onSubmit={handleLogin} className="space-y-4 font-semibold text-left">
                 <div className="space-y-1.5 focus-within:text-[#C5A059]">
                   <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Secure Identifier (Email)</label>
@@ -241,7 +340,21 @@ export default function App() {
                 </div>
 
                 <div className="space-y-1.5 focus-within:text-[#C5A059]">
-                  <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Password PIN</label>
+                  <div className="flex justify-between items-center">
+                    <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Password PIN</label>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setAuthModal("forgot");
+                        setAuthError(null);
+                        setSuccessMessage(null);
+                        setForgotEmail(loginForm.email);
+                      }}
+                      className="text-[#8A1B29] hover:underline hover:text-red-800 text-[10px] font-bold cursor-pointer"
+                    >
+                      Forgot PIN?
+                    </button>
+                  </div>
                   <input
                     required
                     type="password"
@@ -262,14 +375,16 @@ export default function App() {
 
                 <p className="text-center text-[11px] text-slate-800 mt-4 leading-none select-none">
                   New to platform? {" "}
-                  <button type="button" onClick={() => { setAuthModal("register"); setAuthError(null); }} className="text-[#8A1B29] hover:underline font-bold">
+                  <button type="button" onClick={() => { setAuthModal("register"); setAuthError(null); setSuccessMessage(null); }} className="text-[#8A1B29] hover:underline font-bold cursor-pointer">
                      Create anonymous account
                   </button>
                 </p>
               </form>
-            ) : (
-              /* REGISTER PORT */
-              <form onSubmit={handleRegister} className="space-y-4 font-semibold scrollbar overflow-y-auto max-h-[460px] pr-1 pb-1 text-left">
+            )}
+
+            {/* REGISTER PORT */}
+            {authModal === "register" && (
+              <form onSubmit={handleRegister} className="space-y-4 font-semibold scrollbar overflow-y-auto max-h-[420px] pr-1 pb-1 text-left">
                 <div className="space-y-1.5 focus-within:text-[#C5A059]">
                   <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Anonymous Nickname / Alias</label>
                   <input
@@ -373,7 +488,7 @@ export default function App() {
                 <div className="space-y-3 pt-3 border-t border-slate-200 text-center">
                   <p className="text-[11px] text-slate-855 select-none font-semibold">
                     Already have an account?{" "}
-                    <button type="button" onClick={() => { setAuthModal("login"); setAuthError(null); }} className="text-[#8A1B29] hover:underline font-bold cursor-pointer">
+                    <button type="button" onClick={() => { setAuthModal("login"); setAuthError(null); setSuccessMessage(null); }} className="text-[#8A1B29] hover:underline font-bold cursor-pointer">
                       Sign in here
                     </button>
                   </p>
@@ -391,6 +506,102 @@ export default function App() {
                     className="w-full bg-slate-100 hover:bg-slate-200 text-[#8A1B29] font-mono text-xs tracking-widest uppercase py-2.5 rounded-none border border-slate-300 transition duration-150 cursor-pointer text-center font-bold"
                   >
                     Start as Anonymous
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* FORGOT PASSWORD PORT */}
+            {authModal === "forgot" && (
+              <form onSubmit={handleForgotPassword} className="space-y-4 font-semibold text-left">
+                <div className="space-y-1.5 focus-within:text-[#C5A059]">
+                  <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Email Address</label>
+                  <input
+                    required
+                    type="email"
+                    placeholder="kola@example.com"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-none px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#C5A059] placeholder-slate-400 font-medium text-slate-900"
+                  />
+                  <p className="text-slate-500 text-[10px] italic">
+                    Enter your registered email address. We will simulate sending a secure 6-digit recovery PIN instantly.
+                  </p>
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => { setAuthModal("login"); setAuthError(null); setSuccessMessage(null); }}
+                    className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-xs tracking-wider uppercase py-3 rounded-none border border-slate-300 transition text-center cursor-pointer font-bold"
+                  >
+                    Go Back
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={authLoading}
+                    className="flex-1 bg-brand-coral hover:bg-red-800 text-white font-mono text-xs tracking-widest uppercase py-3 rounded-none shadow transition duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {authLoading ? "Verifying..." : "Send Reset Link"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* RESET PASSWORD PORT */}
+            {authModal === "reset" && (
+              <form onSubmit={handleResetPassword} className="space-y-4 font-semibold text-left">
+                <div className="space-y-1.5 focus-within:text-[#C5A059]">
+                  <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Email Profile</label>
+                  <input
+                    required
+                    type="email"
+                    placeholder="kola@example.com"
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-none px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#C5A059] placeholder-slate-400 font-medium text-slate-900"
+                  />
+                </div>
+
+                <div className="space-y-1.5 focus-within:text-[#C5A059]">
+                  <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">6-Digit Recovery PIN</label>
+                  <input
+                    required
+                    type="text"
+                    maxLength={6}
+                    placeholder="e.g. 123456"
+                    value={resetCode}
+                    onChange={(e) => setResetCode(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-none px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#C5A059] text-center font-bold tracking-widest text-slate-950 text-base"
+                  />
+                </div>
+
+                <div className="space-y-1.5 focus-within:text-[#C5A059]">
+                  <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">New Password PIN</label>
+                  <input
+                    required
+                    type="password"
+                    placeholder="Min 6 characters"
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-none px-3.5 py-2.5 focus:outline-none focus:ring-1 focus:ring-[#C5A059] text-slate-900 font-medium"
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => { setAuthModal("forgot"); setAuthError(null); setSuccessMessage(null); }}
+                    className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-mono text-xs tracking-wider uppercase py-3 rounded-none border border-slate-300 transition text-center cursor-pointer font-bold"
+                  >
+                    Back
+                  </button>
+                  <button 
+                    type="submit" 
+                    disabled={authLoading}
+                    className="flex-1 bg-brand-coral hover:bg-amber-800 text-white font-mono text-xs tracking-widest uppercase py-3 rounded-none shadow transition duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    {authLoading ? "Updating..." : "Update PIN"}
                   </button>
                 </div>
               </form>
