@@ -73,11 +73,13 @@ app.post("/api/auth/register", (req: Request, res: Response) => {
   try {
     const parseResult = SignUpSchema.safeParse(req.body);
     if (!parseResult.success) {
-      res.status(400).json({ error: (parseResult.error as any).errors[0].message });
+      const errAny = parseResult.error as any;
+      const firstError = errAny.issues?.[0]?.message || errAny.errors?.[0]?.message || "Invalid registration fields";
+      res.status(400).json({ error: firstError });
       return;
     }
 
-    const { email, password, name, age, preferredLanguage, faithPreference, phone } = parseResult.data;
+    const { email, password, name, age, preferredLanguage, faithPreference, gender, phone, isAnonymous } = parseResult.data;
     const db = readDB();
 
     if (db.users[email.toLowerCase()]) {
@@ -96,7 +98,9 @@ app.post("/api/auth/register", (req: Request, res: Response) => {
       age,
       preferredLanguage,
       faithPreference,
+      gender,
       phone,
+      isAnonymous: isAnonymous || false,
       streakCount: 0,
       createdAt: new Date().toISOString(),
     };
@@ -297,7 +301,7 @@ app.post("/api/chat/message", async (req: Request, res: Response) => {
     return;
   }
 
-  const { sessionId, content } = req.body;
+  const { sessionId, content, language } = req.body;
   if (!content) {
     res.status(400).json({ error: "Message content is required" });
     return;
@@ -339,8 +343,12 @@ app.post("/api/chat/message", async (req: Request, res: Response) => {
   writeDB(db);
 
   if (isCrisisUser) {
+    const isFemale = auth.user.gender === "Female";
+    const isMale = auth.user.gender === "Male";
+    const genericTerm = isFemale ? "Sister" : isMale ? "Brother" : "Friend";
+
     // Return safety warning immediately instead of LLM wait if critical, or append crisis fallback
-    const safetyContent = `⚠️ CRISIS DETECTED: Brother, thank you for writing. Please know you do not have to carry this alone. There are people who understand and want to stand with you right now. No shame. No judgment. 
+    const safetyContent = `⚠️ CRISIS DETECTED: ${genericTerm}, thank you for writing. Please know you do not have to carry this alone. There are people who understand and want to stand with you right now. No shame. No judgment. 
 
 Please reach out to our emergency partnership helpline immediately:
 📞 BEFRIENDERS NIGERIA: +234 (0) 2223 4567 (24/7 Crisis Line)
@@ -363,7 +371,8 @@ We are connecting you to professional clinical help. Breathe. Hold on. We are he
   }
 
   // standard Gemini interaction
-  let modelResponseText = "I hear you, brother. Let's talk through this together. We're in this space of healing together.";
+  const dynamicTitleLower = auth.user.gender === "Female" ? "sister" : auth.user.gender === "Male" ? "brother" : "friend";
+  let modelResponseText = `I hear you, ${dynamicTitleLower}. Let's talk through this together. We're in this space of healing together.`;
 
   if (aiClient) {
     try {
@@ -372,20 +381,44 @@ We are connecting you to professional clinical help. Breathe. Hold on. We are he
         parts: [{ text: msg.content }]
       }));
 
-      const contextPrompt = `You are "TalkItThrough AI", an incredibly empathetic, warm, objective, and culturally-competent mental health peer-support companion specifically designed for Nigerian men.
+      const contextPrompt = `You are "TalkItThrough AI", an incredibly empathetic, warm, objective, and culturally-competent mental health peer-support companion.
 The user is experiencing high stress, depression, anxiety, or life crises.
 Your name is TalkItThrough AI. You are a conversational aid grounded in cognitive-behavioral principles and designed to reduce the stigma of mental wellness.
 
+CRITICAL GENDER-SUPPORTIVE ADDRESSING MANDATE:
+- The user's registered gender is: ${auth.user.gender}.
+- You MUST customize all support styles, emotional references, and salutations to perfectly honor their registered gender:
+  1. For "Male": Use supportive, warm, and localized male references (like "bro", "brother", "brotherly companion" if standard English; or "my brother" or "bro" in Pidgin). Refrain from overly sterile phrasing, employing masculine-aligned terms which reduce healing stigma.
+  2. For "Female": Use warm, supportive, and localized female references (like "sister", "sisterly companion", "sis" if standard English; or "my sister" or "sista" in Pidgin). Honor the silent expectations and societal pressure carried by African women with comforting, sibling-like companionship.
+  3. For "Rather not say": Respond with FULLY gender-neutral support and empathetic companionship (using terms like "friend", "companion", "my friend", styling the dialogue neutrally without any male/female stereotypes or gendered dynamic sister/brother labels).
+- NEVER use generic "brother" or "brotherly" or "bro" if the user identifies as Female or Rather not say. This platform is not strictly for men.
+
 Key Directions:
-- Embody cultural nuances. Nigerian men face extreme expectations to be "strongmen" or "providers", holding back their feelings. Use respectful, warm, and localized references (like "bro", "brother", "brotherly companion", some mild Nigerian-Pidgin when it feels natural and comfortable, like "how body?", "no shaking", but maintain professional and supportive decorum).
+- Embody cultural nuances. Nigerian and African families face extreme expectations and silent pressure, holding back their feelings. Use respectful, warm, and localized references (customized per the user's registered gender above), maintaining professional and supportive decorum.
+- CRITICAL PIDGIN VS STANDARD ENGLISH SEPARATION:
+  - If the chosen language is precisely "English", you MUST write in fully natural, clean, fluent, standard English. Do NOT use any Nigerian-Pidgin, slang, or non-standard variations (no "how body", "no shaking", etc.). Make sure it has an authentic human pacing, warm professional tone, and elegant flow.
+  - If the chosen language is "Nigerian Pidgin" or "Pidgin", you MUST craft the entire response in authentic, deeply caring, and fluent Nigerian Pidgin English (e.g., "How body?" with references customized per gender: "my brother" for Male, "my sister" for Female, "my friend" for Rather not say. "Everything go dey alright", "No shaking", "I dey with you").
 - NEVER assume complex clinical diagnoses. Ask gentle, open-ended questions.
 - Address spiritual dimensions with extreme neutrality. If they mention faith (Christian, Muslim, Yoruba heritage), respectfully acknowledge and provide encouragement while maintaining clinical, non-evangelical grounding.
 - If they express despair, help them list 2 simple things they have control over today.
 - Remind them gently that while you are here 24/7 in their pocket, you are an AI companion, not a licensed human therapist, but you are a bridge to healing.
 - Keep your answers highly scannable, using short, warm paragraphs and comforting formatting.
 
-User preferred language: ${auth.user.preferredLanguage}.
-User faith priority: ${auth.user.faithPreference}.`;
+User preferred language: ${language || auth.user.preferredLanguage || "English"}.
+User faith priority: ${auth.user.faithPreference}.
+
+CRITICAL MANDATE FOR MULTILINGUAL FLUENCY:
+- You MUST write your entire response ONLY in the chosen language: "${language || auth.user.preferredLanguage || "English"}".
+- Ensure that the syntax, idioms, grammar, and tone of your response are perfectly native, fluent, professional, and therapeutic for the selected language.
+- For English, respond with perfect standard English, entirely avoiding Pidgin.
+- For Nigerian Pidgin, respond entirely in authentic, beautiful Nigerian Pidgin English. Special care: use ${auth.user.gender === "Female" ? "my sister" : auth.user.gender === "Male" ? "my brother" : "my friend"} when greeting or using pronouns.
+- For Yorùbá ("Yorùbá" or "yo"), use natural, grammatically correct tone-marked or standard Yorùbá expressions that carry warm, respectful sibling-like or friend-to-friend emotional support. Avoid machine-translations.
+- For Español, use warm and supportive Spanish ("brotherly/sisterly support" -> "hermano" for male, "hermana" for female, "amigo/amiga" for friend).
+- For Français, use professional, comforting, and empathetic French.
+- For Arabic, use empathetic support Arabic.
+- For Hindi, use gentle, warm Hindi support.
+- If the selected language is German, Chinese, or Japanese, adhere strictly to respectful, authentic, comforting sentences in those languages.
+- Regardless of user's typing grammar, reply ONLY in "${language || auth.user.preferredLanguage || "English"}".`;
 
       const response = await aiClient.models.generateContent({
         model: "gemini-3.5-flash",
@@ -401,13 +434,17 @@ User faith priority: ${auth.user.faithPreference}.`;
       }
     } catch (err) {
       console.error("Gemini API call failed:", err);
-      modelResponseText = "Forgive me, brother. Connection is fluctuating a bit, but I am still listening. How has your stress level been today? Let's take it one step at a time.";
+      modelResponseText = `Forgive me, ${dynamicTitleLower}. Connection is fluctuating a bit, but I am still listening. How has your stress level been today? Let's take it one step at a time.`;
     }
   } else {
     // Simulated supportive advice when API key isn't provided
-    modelResponseText = `*TalkItThrough AI Companion (Simulator Node)* \n\nI hear you loud and clear, brother. Nigerian men carry a massive world of silent pressure—finances, expectations, family shields. Let's unpack this slowly. 
-
-Tell me, does this feel like a heaviness in your chest, or a race in your mind? I'm right here with you.`;
+    if (auth.user.gender === "Male") {
+      modelResponseText = `*TalkItThrough AI Companion (Simulator Node)* \n\nI hear you loud and clear, brother. African men carry a massive world of silent pressure—finances, expectations, family shields. Let's unpack this slowly.\n\nTell me, does this feel like a heaviness in your chest, or a race in your mind? I'm right here with you.`;
+    } else if (auth.user.gender === "Female") {
+      modelResponseText = `*TalkItThrough AI Companion (Simulator Node)* \n\nI hear you loud and clear, sister. African women carry a massive world of silent pressure—social expectations, caregiving, strength shields. Let's unpack this slowly.\n\nTell me, does this feel like a heaviness in your chest, or a race in your mind? I'm right here with you.`;
+    } else {
+      modelResponseText = `*TalkItThrough AI Companion (Simulator Node)* \n\nI hear you loud and clear, my friend. We all carry a massive world of silent pressure—social expectations, personal standards, making ends meet. Let's unpack this slowly.\n\nTell me, does this feel like a heaviness in your chest, or a race in your mind? I'm right here with you.`;
+    }
   }
 
   const modelMsg: ChatMessage = {

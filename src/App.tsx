@@ -31,6 +31,7 @@ export default function App() {
     age: 18,
     preferredLanguage: "English" as any,
     faithPreference: "None" as any,
+    gender: "Rather not say" as any,
     phone: ""
   });
   const [loginForm, setLoginForm] = useState({ email: "", password: "" });
@@ -116,7 +117,9 @@ export default function App() {
       age: 25,
       preferredLanguage: "English" as any,
       faithPreference: "None" as any,
-      phone: ""
+      gender: "Rather not say" as any,
+      phone: "",
+      isAnonymous: true
     };
 
     fetch("/api/auth/register", {
@@ -237,7 +240,7 @@ export default function App() {
       });
   };
 
-  const handleLogout = () => {
+  const handleLogout = (redirectToRegister?: boolean) => {
     if (token) {
       fetch("/api/auth/logout", {
         method: "POST",
@@ -247,6 +250,9 @@ export default function App() {
     localStorage.removeItem("talkitthrough_token");
     setToken(null);
     setCurrentUser(null);
+    if (redirectToRegister) {
+      setAuthModal("register");
+    }
   };
 
   return (
@@ -435,30 +441,42 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-2">
                   <div className="space-y-1.5 focus-within:text-[#C5A059]">
-                    <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Preferred Language</label>
+                    <label className="text-slate-800 text-[9px] uppercase font-mono tracking-wider">Language</label>
                     <select
                       value={regForm.preferredLanguage}
                       onChange={(e) => setRegForm(prev => ({ ...prev, preferredLanguage: e.target.value as any }))}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-none px-3.5 py-2 font-bold focus:outline-none focus:ring-1 focus:ring-[#C5A059] text-slate-900"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-none px-2 py-2 font-bold focus:outline-none focus:ring-1 focus:ring-[#C5A059] text-[11px] text-slate-900"
                     >
                       <option value="English">English</option>
                       <option value="Yoruba">Yorùbá</option>
-                      <option value="English-Pidgin">Naija Pidgin</option>
+                      <option value="English-Pidgin">Pidgin</option>
                     </select>
                   </div>
                   <div className="space-y-1.5 focus-within:text-[#C5A059]">
-                    <label className="text-slate-800 text-[10px] uppercase font-mono tracking-wider">Spiritual Focus</label>
+                    <label className="text-slate-800 text-[9px] uppercase font-mono tracking-wider">Spiritual Focus</label>
                     <select
                       value={regForm.faithPreference}
                       onChange={(e) => setRegForm(prev => ({ ...prev, faithPreference: e.target.value as any }))}
-                      className="w-full bg-slate-50 border border-slate-300 rounded-none px-3.5 py-2 font-bold focus:outline-none focus:ring-1 focus:ring-[#C5A059] text-slate-900"
+                      className="w-full bg-slate-50 border border-slate-300 rounded-none px-2 py-2 font-bold focus:outline-none focus:ring-1 focus:ring-[#C5A059] text-[11px] text-slate-900"
                     >
-                      <option value="None">Secular Focus</option>
+                      <option value="None">Secular</option>
                       <option value="Christian">Christian</option>
                       <option value="Muslim">Muslim</option>
-                      <option value="Other">Other / Neutral</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1.5 focus-within:text-[#C5A059]">
+                    <label className="text-slate-800 text-[9px] uppercase font-mono tracking-wider">Gender Identity</label>
+                    <select
+                      value={regForm.gender}
+                      onChange={(e) => setRegForm(prev => ({ ...prev, gender: e.target.value as any }))}
+                      className="w-full bg-slate-50 border border-slate-300 rounded-none px-2 py-2 font-bold focus:outline-none focus:ring-1 focus:ring-[#C5A059] text-[11px] text-slate-900"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Rather not say">Rather not say</option>
                     </select>
                   </div>
                 </div>

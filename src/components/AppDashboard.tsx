@@ -4,7 +4,8 @@ import {
   Home, MessageSquare, Compass, Sliders, LogOut, 
   Trash2, Download, Check, AlertCircle, Sparkles, Send, 
   Mic, Smile, Moon, Users, Flag, Calendar, Activity,
-  ChevronRight, Volume2, ShieldAlert, Heart
+  ChevronRight, Volume2, ShieldAlert, Heart, Loader2,
+  Menu, X
 } from "lucide-react";
 import { SignUpInput, MoodLogInput, ChatMessage, TherapySession, GroupMessage } from "../types";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
@@ -12,9 +13,84 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 interface AppDashboardProps {
   token: string;
   user: any;
-  onLogout: () => void;
+  onLogout: (redirectToRegister?: boolean) => void;
   onUserUpdate: (updatedUser: any) => void;
 }
+
+const LANGUAGES_LIST = [
+  { code: "en", label: "English", tts: "en-US", asr: "en-US" },
+  { code: "pcm", label: "Nigerian Pidgin", tts: "en-NG", asr: "en-NG" },
+  { code: "fr", label: "Français (French)", tts: "fr-FR", asr: "fr-FR" },
+  { code: "es", label: "Español (Spanish)", tts: "es-ES", asr: "es-ES" },
+  { code: "de", label: "German (Deutsch)", tts: "de-DE", asr: "de-DE" },
+  { code: "yo", label: "Yorùbá (Yoruba)", tts: "yo-NG", asr: "yo-NG" },
+  { code: "ar", label: "العربية (Arabic)", tts: "ar-AE", asr: "ar-AE" },
+  { code: "hi", label: "हिन्दी (Hindi)", tts: "hi-IN", asr: "hi-IN" },
+  { code: "zh", label: "中文 (Chinese)", tts: "zh-CN", asr: "zh-CN" },
+  { code: "ja", label: "日本語 (Japanese)", tts: "ja-JP", asr: "ja-JP" },
+];
+
+const PREFERRED_VOICES = {
+  'en-US': [
+    'Microsoft Aria Online (Natural) - English (United States)',
+    'Microsoft Guy Online (Natural) - English (United States)',
+    'Microsoft Jenny Online (Natural) - English (United States)',
+    'Google US English Female',
+    'Google US English Male',
+    'Siri',
+  ],
+  'en-GB': [
+    'Microsoft Sonia Online (Natural) - English (United Kingdom)',
+    'Microsoft Ryan Online (Natural) - English (United Kingdom)',
+    'Microsoft Libby Online (Natural) - English (United Kingdom)',
+    'Google UK English Female',
+    'Google UK English Male',
+    'Siri',
+  ],
+  'en-NG': [
+    'Microsoft Abeo Online (Natural) - English (Nigeria)',
+    'Microsoft Ezinne Online (Natural) - English (Nigeria)',
+    'Google English (Nigeria) Male',
+    'Google English (Nigeria) Female',
+    'Google UK English Female',
+    'Siri',
+  ],
+  'fr-FR': [
+    'Microsoft Denise Online (Natural) - French (France)',
+    'Microsoft Henri Online (Natural) - French (France)',
+    'Google français',
+    'Siri',
+  ],
+  'es-ES': [
+    'Microsoft Elvira Online (Natural) - Spanish (Spain)',
+    'Microsoft Alvaro Online (Natural) - Spanish (Spain)',
+    'Google español',
+    'Siri',
+  ],
+  'de-DE': [
+    'Microsoft Katja Online (Natural) - German (Germany)',
+    'Microsoft Conrad Online (Natural) - German (Germany)',
+    'Google Deutsch',
+    'Siri',
+  ],
+  'yo-NG': [],
+  'ar-AE': [
+    'Microsoft Fatima Online (Natural) - Arabic (United Arab Emirates)',
+    'Google العربية',
+  ],
+  'hi-IN': [
+    'Microsoft Swara Online (Natural) - Hindi (India)',
+    'Google हिन्दी',
+  ],
+  'zh-CN': [
+    'Microsoft Xiaoxiao Online (Natural) - Chinese (Mainland)',
+    'Google 中文',
+  ],
+  'ja-JP': [
+    'Microsoft Nanami Online (Natural) - Japanese (Japan)',
+    'Google 日本語',
+  ]
+};
 
 export default function AppDashboard({ token, user, onLogout, onUserUpdate }: AppDashboardProps) {
   const [activeTab, setActiveTab] = useState<"home" | "chat" | "mood" | "groups" | "faith" | "settings">("home");
@@ -30,6 +106,12 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
   const [preChatMood, setPreChatMood] = useState<number>(5);
   const [postChatMood, setPostChatMood] = useState<number>(5);
   const [showMoodCheckIn, setShowMoodCheckIn] = useState<"pre" | "post" | null>(null);
+  const [chatLanguage, setChatLanguage] = useState<string>("en");
+  const [isListening, setIsListening] = useState<boolean>(false);
+  const [isSpeaking, setIsSpeaking] = useState<boolean>(false);
+  const [asrFallbackTip, setAsrFallbackTip] = useState<string | null>(null);
+  const [utteranceRef, setUtteranceRef] = useState<any>(null);
+
   const [moodLogs, setMoodLogs] = useState<any[]>([]);
   const [moodForm, setMoodForm] = useState<MoodLogInput>({ mood: 6, sleepQuality: 6, notes: "" });
   const [moodSubmitted, setMoodSubmitted] = useState(false);
@@ -59,21 +141,33 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
 
   // Local state alerts
   const [alertText, setAlertText] = useState<string | null>(null);
+  const [restrictAlertOpen, setRestrictAlertOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [chatSubView, setChatSubView] = useState<"chat" | "history">("chat");
   const chatEndRef = useRef<HTMLDivElement | null>(null);
+
+  // Subtle Password Verification for Admin Toggle
+  const [adminPasscodeModalOpen, setAdminPasscodeModalOpen] = useState(false);
+  const [adminPasscodeInput, setAdminPasscodeInput] = useState("");
+  const [adminPasscodeError, setAdminPasscodeError] = useState("");
+  const [adminPasscodeLoading, setAdminPasscodeLoading] = useState(false);
 
   // Settings states
   const [settingsForm, setSettingsForm] = useState({
     preferredLanguage: user.preferredLanguage || "English",
     faithPreference: user.faithPreference || "None",
+    gender: user.gender || "Rather not say",
     phone: user.phone || ""
   });
   const [settingsSuccess, setSettingsSuccess] = useState(false);
 
   // ROTATIONAL PIECES: AFFIRMATION
+  const dynamicFamiliarTerm = user.gender === "Female" ? "sister" : user.gender === "Male" ? "brother" : "friend";
+  const dynamicBrosTerm = user.gender === "Female" ? "Sista" : user.gender === "Male" ? "Bros" : "Friend";
   const PIDGIN_AFFIRMATIONS = [
-    "No condition is permanent, brother. Better days dey ahead. Hold on tight.",
+    `No condition is permanent, ${dynamicFamiliarTerm}. Better days dey ahead. Hold on tight.`,
     "You dey try well-well. To fail today no mean say you cannot master tomorrow.",
-    "Bros, clean your chest of heavy weight. No shame in saying things dey hot.",
+    `${dynamicBrosTerm}, clean your chest of heavy weight. No shame in saying things dey hot.`,
     "You are a strong shield, but every shield needs a safe harbor to rest.",
     "I stand correct, my worth dey high. Pressure no fit break my spirit."
   ];
@@ -83,6 +177,126 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
   const [isBreathing, setIsBreathing] = useState(false);
   const [breathPhase, setBreathPhase] = useState<"Inhale" | "Hold (In)" | "Exhale" | "Hold (Out)">("Inhale");
   const [breathSeconds, setBreathSeconds] = useState(4);
+
+  // ================= SPEECH SYNTHESIS & RECOGNITION HELPERS =================
+  const getSmsVoice = (locale: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return null;
+    const voices = window.speechSynthesis.getVoices() || [];
+    if (!voices.length) return null;
+
+    const prefs = PREFERRED_VOICES[locale as keyof typeof PREFERRED_VOICES] || [];
+    for (const pref of prefs) {
+      const v = voices.find(v => (v.name || '').toLowerCase().includes(pref.toLowerCase()));
+      if (v) return v;
+    }
+
+    let v = voices.find(v => v.lang && v.lang.toLowerCase() === locale.toLowerCase());
+    if (v) return v;
+
+    const base = locale.split('-')[0].toLowerCase();
+    v = voices.find(v => v.lang && v.lang.toLowerCase().startsWith(base));
+    if (v) return v;
+
+    return voices.find(v => v.lang && v.lang.toLowerCase().startsWith('en')) || null;
+  };
+
+  const speakText = (text: string) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+    try {
+      window.speechSynthesis.cancel();
+      // Clean standard markdown symbols before rendering audio outputs for natural narrative flow
+      const cleanText = text.replace(/[*#`_\[\]]/g, ""); 
+      const activeLangObj = LANGUAGES_LIST.find(l => l.code === chatLanguage) || LANGUAGES_LIST[0];
+      const utter = new SpeechSynthesisUtterance(cleanText);
+      utter.lang = activeLangObj.tts;
+      const voice = getSmsVoice(activeLangObj.tts);
+      if (voice) utter.voice = voice;
+      
+      // Config rate and pacing dynamically based on language choice
+      if (activeLangObj.code === "en") {
+        utter.rate = 1.15; // Slightly faster natural pacing to eliminate robotic pauses and monotone feeling
+      } else {
+        utter.rate = 0.95; // Relaxed therapeutic pacing for other dialects/languages
+      }
+      utter.pitch = 1.0;
+      
+      utter.onstart = () => setIsSpeaking(true);
+      utter.onend = () => setIsSpeaking(false);
+      utter.onerror = () => setIsSpeaking(false);
+      
+      window.speechSynthesis.speak(utter);
+      setUtteranceRef(utter);
+    } catch (e) {
+      console.error(e);
+      setIsSpeaking(false);
+    }
+  };
+
+  const stopSpeakingText = () => {
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel();
+    }
+    setIsSpeaking(false);
+  };
+
+  const startSpeechRecognition = () => {
+    const SR = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SR) {
+      alert("Acoustic voice recording is unrecognized or unsupported in this native browser wrapper. Please use Google Chrome or Microsoft Edge.");
+      return;
+    }
+
+    try {
+      stopSpeakingText(); // Cancel current AI speak narrative when user starts speaking
+      const activeLangObj = LANGUAGES_LIST.find(l => l.code === chatLanguage) || LANGUAGES_LIST[0];
+      const recognition = new SR();
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      try {
+        recognition.lang = activeLangObj.asr;
+      } catch (err) {
+        recognition.lang = 'en-GB';
+        setAsrFallbackTip("Preferred voice recognition language profile not found locally. Standard English recognition utilized.");
+      }
+
+      recognition.onstart = () => {
+        setIsListening(true);
+      };
+
+      recognition.onresult = (event: any) => {
+        const text = event.results[0][0].transcript;
+        if (text) {
+          setMessageInput(prev => prev ? prev + " " + text : text);
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.error("Speech Recognition error", event.error);
+        setIsListening(false);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+      };
+
+      recognition.start();
+      (window as any)._recognitionRef = recognition;
+    } catch (e) {
+      console.error(e);
+      setIsListening(false);
+    }
+  };
+
+  const stopSpeechRecognition = () => {
+    if ((window as any)._recognitionRef) {
+      try {
+        ((window as any)._recognitionRef).stop();
+      } catch (err) {}
+    }
+    setIsListening(false);
+  };
 
   useEffect(() => {
     let timer: any = null;
@@ -395,11 +609,15 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
     setActiveSession(mockSession);
     setShowMoodCheckIn(null);
     setActiveTab("chat");
+    setChatSubView("chat");
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageInput.trim() || !activeSession) return;
+
+    // Interrupt any active speaking when sending a new message
+    stopSpeakingText();
 
     const userText = messageInput;
     setMessageInput("");
@@ -415,13 +633,19 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
 
     setActiveSession(prev => prev ? { ...prev, messages: [...prev.messages, tempUserMsg] } : null);
 
+    const activeLangObj = LANGUAGES_LIST.find(l => l.code === chatLanguage) || LANGUAGES_LIST[0];
+
     fetch("/api/chat/message", {
       method: "POST",
       headers: { 
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`
       },
-      body: JSON.stringify({ sessionId: activeSession.id, content: userText })
+      body: JSON.stringify({ 
+        sessionId: activeSession.id, 
+        content: userText,
+        language: activeLangObj.label
+      })
     })
       .then(res => res.json())
       .then(data => {
@@ -433,7 +657,13 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
           
           // If crisis was triggered, post warning
           if (data.response?.isCrisisMatch) {
-            setAlertText("CRISIS COMPASS: Brother, we detected high-alert keywords. Please check local emergency networks immediately.");
+            const title = user.gender === "Female" ? "Sister" : user.gender === "Male" ? "Brother" : "Friend";
+            setAlertText(`CRISIS COMPASS: ${title}, we detected high-alert keywords. Please check local emergency networks immediately.`);
+          }
+
+          // Automatically speak AI response in the correct language representation
+          if (data.response?.content) {
+            speakText(data.response.content);
           }
         }
       })
@@ -460,7 +690,8 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
         loadMoodLogs();
         setShowMoodCheckIn(null);
         setActiveTab("home");
-        alert("Session saved, brother. Your post-chat wellness metrics have been archived correctly!");
+        const term = user.gender === "Female" ? "sister" : user.gender === "Male" ? "brother" : "friend";
+        alert(`Session saved, ${term}. Your post-chat wellness metrics have been archived correctly!`);
       });
   };
 
@@ -591,10 +822,334 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
   });
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row text-xs md:text-sm">
+    <div className="h-screen w-screen bg-slate-50 flex flex-col md:flex-row text-xs md:text-sm overflow-hidden">
       
+      {/* SECURE ADMIN ENTRY MODAL */}
+      <AnimatePresence>
+        {adminPasscodeModalOpen && (
+          <div className="fixed inset-0 bg-slate-950/60 backdrop-blur-[2px] flex items-center justify-center z-50 p-4 text-xs">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="bg-white border border-[#C5A059] rounded-xl shadow-2xl p-6 w-full max-w-sm relative overflow-hidden"
+            >
+              {/* Spinner/Loading Overlay for verification */}
+              {adminPasscodeLoading && (
+                <div className="absolute inset-0 bg-white/95 backdrop-blur-[1px] flex flex-col items-center justify-center z-10 select-none">
+                  <div className="text-center space-y-3 p-4">
+                    <Loader2 className="w-8 h-8 text-[#8A1B29] animate-spin mx-auto" />
+                    <p className="text-[10px] uppercase font-mono tracking-widest text-[#8A1B29] font-extrabold pb-0">
+                      Authenticating...
+                    </p>
+                    <p className="text-slate-500 text-[10px] font-sans">
+                      Checking clearance credentials...
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Close Button */}
+              <button 
+                type="button"
+                onClick={() => setAdminPasscodeModalOpen(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+
+              <div className="text-center space-y-2 select-none">
+                <div className="mx-auto w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <h3 className="font-display font-serif font-bold text-slate-950 text-base mt-2">
+                  Verify Administrative Access
+                </h3>
+                <p className="text-slate-500 text-[10.5px]">
+                  Please enter your passcode to modify system resources.
+                </p>
+              </div>
+
+              {adminPasscodeError && (
+                <div className="mt-4 bg-red-50 text-red-800 p-2 text-[10.5px] border border-red-200 text-center font-bold">
+                  ⚠️ {adminPasscodeError}
+                </div>
+              )}
+
+              <form 
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  setAdminPasscodeLoading(true);
+                  setAdminPasscodeError("");
+                  
+                  // Simulate 1.2 second authentication check with backend
+                  setTimeout(() => {
+                    if (adminPasscodeInput === "Yetundes4321#") {
+                      // Correct!
+                      const updatedUser = { ...user, role: "admin" };
+                      onUserUpdate(updatedUser);
+                      setAdminPasscodeModalOpen(false);
+                      setAdminPasscodeLoading(false);
+                      setAlertText("Admin powers simulation enabled. You can now configure rules, add seasonal resources, and purge posts!");
+                      setActiveTab("admin");
+                    } else {
+                      setAdminPasscodeLoading(false);
+                      setAdminPasscodeError("Invalid Administrative Password. Access denied.");
+                    }
+                  }, 1200);
+                }}
+                className="mt-4 space-y-3"
+              >
+                <div className="space-y-1 focus-within:text-[#C5A059]">
+                  <label className="text-slate-800 text-[9px] uppercase font-mono tracking-wider font-semibold">Passcode</label>
+                  <input
+                    required
+                    type="password"
+                    placeholder="Enter security passcode..."
+                    value={adminPasscodeInput}
+                    onChange={(e) => setAdminPasscodeInput(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-300 rounded-none px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-[#C5A059] placeholder-slate-400 font-semibold text-slate-1500 text-slate-950"
+                    autoFocus
+                  />
+                </div>
+
+                <div className="flex gap-2 pt-1.5">
+                  <button 
+                    type="button" 
+                    onClick={() => setAdminPasscodeModalOpen(false)}
+                    className="w-1/3 bg-slate-50 hover:bg-slate-100 text-slate-700 font-mono text-[10px] tracking-wider uppercase py-2 rounded-none border border-slate-300 transition text-center cursor-pointer font-bold"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="flex-1 bg-amber-500 hover:bg-amber-600 text-slate-950 font-mono text-[10px] tracking-widest uppercase py-2 rounded-none shadow transition duration-150 flex items-center justify-center gap-1 cursor-pointer font-bold"
+                  >
+                    Verify Passcode
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* PRE-CHAT INTAKE OR POST-CHAT RESOLUTION MODALS */}
+      <AnimatePresence>
+        {showMoodCheckIn === "pre" && (
+          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-[3px] flex items-center justify-center z-50 p-4 text-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-slate-900 rounded-2xl shadow-2xl p-6 w-full max-w-md relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-2 bg-brand-coral" />
+              
+              <div className="text-center space-y-1.5 mb-6">
+                <div className="mx-auto w-12 h-12 rounded-full bg-brand-coral/10 flex items-center justify-center text-brand-coral">
+                  <Sparkles className="w-6 h-6 animate-pulse" />
+                </div>
+                <h3 className="font-display font-black text-slate-800 text-base mt-2">
+                  CBT Intake & Mood Check-In
+                </h3>
+                <p className="text-slate-500 text-[10.5px]">
+                  Help us adapt our empathetic companionship to your heart state.
+                </p>
+              </div>
+
+              <div className="space-y-5">
+                {/* Range picker */}
+                <div className="space-y-2">
+                  <label className="text-slate-700 text-xs font-bold block">
+                    How is your emotional or mental strain right now? (1-10)
+                  </label>
+                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setPreChatMood(num)}
+                        className={`h-9 rounded-lg border-2 font-bold text-xs flex items-center justify-center transition-all cursor-pointer ${
+                          preChatMood === num
+                            ? "bg-slate-900 border-slate-900 text-[#FFF200]"
+                            : "bg-white border-slate-200 text-slate-600 hover:border-slate-400 font-semibold"
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400 font-bold px-1 select-none">
+                    <span>1 - Heavy Strain</span>
+                    <span>10 - Restful Peace</span>
+                  </div>
+                </div>
+
+                {/* Language Selection */}
+                <div className="space-y-2">
+                  <label className="text-slate-700 text-xs font-bold block">
+                    Choose Therapy Session Language
+                  </label>
+                  <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto pr-1">
+                    {LANGUAGES_LIST.map((lang) => (
+                      <button
+                        key={lang.code}
+                        type="button"
+                        onClick={() => setChatLanguage(lang.code)}
+                        className={`px-3 py-2.5 rounded-xl border-2 font-bold text-xs flex items-center justify-between transition-all cursor-pointer ${
+                          chatLanguage === lang.code
+                            ? "bg-brand-coral text-white border-slate-900 shadow-[2px_2px_0px_0px_rgba(21,30,40,1)]"
+                            : "bg-white text-slate-700 border-slate-200 hover:border-slate-300 font-semibold"
+                        }`}
+                      >
+                        <span>{lang.label}</span>
+                        {chatLanguage === lang.code && <Check className="w-4 h-4" />}
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-[10px] text-slate-400">
+                    AI responses, listening voice recognition, and spoken narrative audio feedback will conform to this selection.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex gap-3 mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowMoodCheckIn(null)}
+                  className="w-1/3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs py-3 rounded-xl border-2 border-slate-300 transition-all cursor-pointer"
+                >
+                  Cancel Intake
+                </button>
+                <button
+                  type="button"
+                  onClick={executeThreadCreation}
+                  className="flex-1 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs py-3 rounded-xl shadow-md border-2 border-slate-900 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <MessageSquare className="w-4 h-4 animate-bounce" />
+                  Start Therapy Session
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {showMoodCheckIn === "post" && (
+          <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-[3px] flex items-center justify-center z-50 p-4 text-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-slate-900 rounded-2xl shadow-2xl p-6 w-full max-w-sm relative overflow-hidden"
+            >
+              <div className="absolute top-0 inset-x-0 h-2 bg-emerald-500" />
+
+              <div className="text-center space-y-1.5 mb-6">
+                <div className="mx-auto w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
+                  <Check className="w-6 h-6 animate-pulse" />
+                </div>
+                <h3 className="font-display font-black text-slate-800 text-base mt-2">
+                  Post-Session Check-in
+                </h3>
+                <p className="text-slate-500 text-[10.5px]">
+                  Excellent check-in, {dynamicFamiliarTerm}. How has your stress metric improved after writing or dialoguing?
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-slate-700 text-xs font-bold block">
+                    Rate your mental state now (1-10)
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setPostChatMood(num)}
+                        className={`h-9 rounded-lg border-2 font-bold text-xs flex items-center justify-center transition-all cursor-pointer ${
+                          postChatMood === num
+                            ? "bg-slate-900 border-slate-900 text-[#FFF200]"
+                            : "bg-white border-slate-200 text-slate-600 hover:border-slate-400 font-semibold"
+                        }`}
+                      >
+                        {num}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex justify-between text-[10px] text-slate-400 font-bold px-1 select-none">
+                    <span>1 - Melancholy</span>
+                    <span>10 - Resolute Light</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-6">
+                <button
+                  type="button"
+                  onClick={executePostChatLog}
+                  className="w-full bg-slate-900 hover:bg-slate-850 text-white font-bold text-xs py-3 rounded-xl shadow-md border-2 border-slate-900 transition-all flex items-center justify-center gap-1.5 cursor-pointer align-middle"
+                >
+                  Archive & Complete Session
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      
+      {/* MOBILE HEADER BAR */}
+      <header className="sticky top-0 z-30 flex md:hidden items-center justify-between bg-slate-900 text-white px-4 py-3 border-b border-slate-800 shrink-0 select-none">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2.5 -ml-2 text-slate-350 hover:text-white rounded-lg focus:outline-none transition active:bg-slate-800/60"
+            aria-label="Open menu"
+            id="mobile-menu-open-btn"
+          >
+            <Menu className="w-5 h-5 text-slate-100" />
+          </button>
+          
+          <div className="flex items-center gap-1.5">
+            <span className="w-2.5 h-2.5 rounded-full bg-brand-coral pulse-heart" />
+            <span className="font-display font-extrabold text-white tracking-wide text-xs whitespace-nowrap">TalkItThrough App</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <div className="bg-brand-coral/20 border border-brand-coral/45 px-2 py-1 rounded text-[9px] font-bold text-white flex items-center gap-1">
+            <span>🔥</span>
+            <span>{user.streakCount || 0}d</span>
+          </div>
+          {user.isAnonymous && (
+            <span className="bg-amber-500/20 border border-amber-500/40 text-[8px] font-mono font-bold text-amber-500 px-1.5 py-0.5 rounded uppercase tracking-wider">
+              Guest
+            </span>
+          )}
+        </div>
+      </header>
+
+      {/* BACKGROUND DRAWER BACKDROP */}
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-950/65 backdrop-blur-[2px] md:hidden"
+            id="mobile-menu-backdrop"
+          />
+        )}
+      </AnimatePresence>
+
       {/* SIDEBAR NAVIGATION PANEL */}
-      <aside className="w-full md:w-64 bg-slate-900 text-white flex flex-col justify-between shrink-0 border-r border-slate-850">
+      <aside 
+        className={`fixed inset-y-0 left-0 z-50 w-64 bg-slate-900 text-white flex flex-col justify-between shrink-0 border-r border-slate-850 transform transition-transform duration-300 md:relative md:translate-x-0 ${isSidebarOpen ? "translate-x-0" : "-translate-x-full"}`}
+        id="app-sidebar-nav"
+      >
         
         {/* Upper elements */}
         <div>
@@ -604,20 +1159,50 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
               <span className="w-5 h-5 rounded-full bg-brand-coral pulse-heart" />
               <span className="font-display font-extrabold text-[#ffffff] tracking-wide text-sm whitespace-nowrap">TalkItThrough App</span>
             </div>
-            <span className="bg-emerald-900/40 text-emerald-400 text-[10px] font-bold border border-emerald-800 rounded px-1.5 py-0.5 uppercase tracking-wider">ONLINE</span>
+            
+            {/* Close button for mobile views */}
+            <button
+              onClick={() => setIsSidebarOpen(false)}
+              className="md:hidden p-2 -mr-2 text-slate-400 hover:text-white transition rounded-xl"
+              aria-label="Close menu"
+              id="mobile-menu-close-btn"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            
+            <span className="bg-emerald-900/40 text-emerald-400 text-[10px] font-bold border border-emerald-800 rounded px-1.5 py-0.5 uppercase tracking-wider hidden md:inline-block">ONLINE</span>
           </div>
-
+ 
           {/* Logged in Profiler */}
           <div className="px-6 py-4.5 bg-slate-950/40">
-            <p className="text-[10px] uppercase text-slate-500 font-bold tracking-widest">Active Brother</p>
+            {user.isAnonymous ? (
+              <p className="text-[10px] uppercase text-amber-500 font-mono font-bold tracking-widest leading-none mb-1">Guest Sneak Peek</p>
+            ) : (
+              <>
+                {user.gender === "Female" && (
+                  <p className="text-[10px] uppercase text-[#C5A059] font-mono font-bold tracking-widest leading-none mb-1">Active Sister</p>
+                )}
+                {user.gender === "Male" && (
+                  <p className="text-[10px] uppercase text-slate-450 font-mono font-bold tracking-widest leading-none mb-1">Active Brother</p>
+                )}
+              </>
+            )}
             <p className="font-display font-bold text-slate-200 mt-1">{user.name}</p>
             <p className="text-[10px] text-slate-400 truncate mt-0.5">{user.email}</p>
-            <div className="flex items-center gap-1.5 bg-brand-coral/10 border border-brand-coral/20 px-2.5 py-1.5 rounded-lg text-brand-coral mt-3.5 select-none leading-none">
+            <div 
+              className="flex items-center gap-1.5 bg-brand-coral/20 border border-brand-coral/45 px-2.5 py-1.5 rounded-lg mt-3.5 select-none leading-none"
+              style={{ color: '#f8f8f8' }}
+            >
               <span className="text-sm">🔥</span>
-              <span className="font-extrabold font-display text-xs">STREAK: {user.streakCount || 0} DAYS LOGGED</span>
+              <span 
+                className="font-extrabold text-xs uppercase"
+                style={{ color: '#f8f8f8' }}
+              >
+                STREAK: {user.streakCount || 0} DAYS LOGGED
+              </span>
             </div>
           </div>
-
+ 
           {/* NAV ITEMS MAP */}
           <nav className="p-4 space-y-1.5 font-medium">
             {[
@@ -627,62 +1212,82 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
               { id: "groups", label: "Peer support Boards", icon: <Users className="w-4 h-4" /> },
               { id: "faith", label: "Faith & Wellness Library", icon: <Compass className="w-4 h-4" /> },
               { id: "settings", label: "GDPR Account Settings", icon: <Sliders className="w-4 h-4" /> }
-            ].map(item => (
-              <button
-                key={item.id}
-                onClick={() => { setActiveTab(item.id as any); setAlertText(null); }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition font-semibold text-left ${activeTab === item.id ? "bg-brand-coral text-white shadow-md font-bold" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
-              >
-                {item.icon}
-                <span className="text-xs">{item.label}</span>
-              </button>
-            ))}
-
+            ].map(item => {
+              const isRestricted = user.isAnonymous === true && ["groups", "faith", "settings"].includes(item.id);
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => { 
+                    if (isRestricted) {
+                      setRestrictAlertOpen(true);
+                      return;
+                    }
+                    setActiveTab(item.id as any); 
+                    setAlertText(null); 
+                    setIsSidebarOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition font-semibold text-left relative active:scale-[0.98] ${isRestricted ? "opacity-70 hover:opacity-100" : ""} ${activeTab === item.id ? "bg-brand-coral text-white shadow-md font-bold" : "text-slate-400 hover:text-white hover:bg-slate-800/40"}`}
+                >
+                  <div className="flex items-center gap-3">
+                    {item.icon}
+                    <span className="text-xs">{item.label}</span>
+                  </div>
+                  {isRestricted && (
+                    <span className="bg-brand-coral text-white border border-brand-coral/50 text-[8px] font-extrabold px-1.5 py-0.5 rounded uppercase font-mono">
+                      Locked
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+ 
             {user.role === "admin" && (
               <button
-                onClick={() => { setActiveTab("admin"); setAlertText(null); }}
-                className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl transition font-semibold text-left ${activeTab === "admin" ? "bg-amber-500 text-slate-950 shadow-md font-bold" : "text-amber-400 hover:text-white hover:bg-amber-500/10"}`}
+                onClick={() => { 
+                  setActiveTab("admin"); 
+                  setAlertText(null);
+                  setIsSidebarOpen(false);
+                }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition font-semibold text-left active:scale-[0.98] ${activeTab === "admin" ? "bg-amber-500 text-slate-950 shadow-md font-bold" : "text-amber-400 hover:text-white hover:bg-amber-500/10"}`}
               >
                 <ShieldAlert className="w-4 h-4 text-amber-400" />
                 <span className="text-xs font-bold">Admin Control Desk</span>
               </button>
             )}
           </nav>
-
-          {/* Admin Power Switch (a different little button/switch) */}
-          <div className="mx-4 my-2 p-3 bg-slate-950 border border-slate-850 rounded-xl space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] text-slate-400 font-mono font-bold uppercase tracking-wider flex items-center gap-1">
-                <ShieldAlert className="w-3 h-3 text-amber-500" /> Administrative Key
-              </span>
-              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold ${user.role === "admin" ? "bg-amber-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                {user.role === "admin" ? "ADMIN" : "PEER"}
-              </span>
-            </div>
-            <button
-              onClick={() => {
-                const isCurrentlyAdmin = user.role === "admin";
-                const updatedUser = { ...user, role: isCurrentlyAdmin ? "peer" : "admin" };
-                onUserUpdate(updatedUser);
-                if (!isCurrentlyAdmin) {
-                  setAlertText("Admin powers simulation enabled. You can now configure rules, add seasonal resources, and purge posts!");
-                } else {
-                  setAlertText("Returned to general peer support perspective.");
-                  if (activeTab === "admin") setActiveTab("home");
-                }
-              }}
-              className="w-full bg-[#1e293b] hover:bg-slate-800 text-slate-300 hover:text-white border border-slate-700 py-1.5 rounded-lg text-[10px] uppercase font-bold tracking-tight transition text-center block"
-            >
-              {user.role === "admin" ? "Toggle to Peer View" : "Toggle Admin Mode"}
-            </button>
-          </div>
         </div>
-
-        {/* Lower exit item */}
-        <div className="p-4 border-t border-slate-800">
+ 
+        {/* Lower exit item & Subtle Admin entry */}
+        <div className="p-4 border-t border-slate-800 space-y-1">
+          {/* Subtle Admin Action */}
           <button 
-            onClick={onLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 font-bold tracking-tight text-left transition"
+            onClick={() => {
+              setIsSidebarOpen(false);
+              if (user.role === "admin") {
+                // Switch back to peer immediately
+                const updatedUser = { ...user, role: "peer" };
+                onUserUpdate(updatedUser);
+                setAlertText("Returned to general peer support perspective.");
+                if (activeTab === "admin") setActiveTab("home");
+              } else {
+                // Open Passcode Modal
+                setAdminPasscodeModalOpen(true);
+                setAdminPasscodeInput("");
+                setAdminPasscodeError("");
+              }
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2 rounded-xl text-slate-400 hover:text-amber-400 hover:bg-slate-800/20 text-[10px] font-medium tracking-tight text-left transition cursor-pointer group active:scale-[0.98]"
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 animate-pulse" />
+            <span>{user.role === "admin" ? "Toggle to Peer View" : "Toggle Admin Mode"}</span>
+          </button>
+ 
+          <button 
+            onClick={() => {
+              setIsSidebarOpen(false);
+              onLogout();
+            }}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-slate-400 hover:text-red-400 hover:bg-red-500/10 font-bold tracking-tight text-left transition active:scale-[0.98]"
           >
             <LogOut className="w-4 h-4" />
             <span>Sign Out Offline</span>
@@ -691,7 +1296,7 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
       </aside>
 
       {/* COMPANION MAIN AREA */}
-      <main className="grow flex flex-col h-screen overflow-y-auto">
+      <main className="grow flex flex-col h-[calc(100vh-53px)] md:h-screen overflow-y-auto">
         
         {/* Alert prompt if safe overrides generated */}
         {alertText && (
@@ -705,7 +1310,7 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
           </div>
         )}
 
-        <div className="p-6 md:p-8 space-y-6">
+        <div className="p-4 md:p-8 space-y-4 md:space-y-6">
           
           {/* ================= TAB 1: DASHBOARD PORTAL ================= */}
           {activeTab === "home" && (
@@ -770,6 +1375,7 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {[
                   {
+                    id: "mood",
                     icon: <Smile className="text-brand-sage w-5 h-5" />,
                     title: "Log Daily Mood",
                     desc: "Trace your emotional recovery line today.",
@@ -777,13 +1383,15 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
                     bg: "bg-white"
                   },
                   {
+                    id: "groups",
                     icon: <Users className="text-brand-blue w-5 h-5" />,
                     title: "Supportive Boards",
-                    desc: "Anonymously share stories with other brothers.",
+                    desc: `Anonymously share stories with other ${user.gender === "Female" ? "sisters" : user.gender === "Male" ? "brothers" : "peers"}.`,
                     action: () => setActiveTab("groups"),
                     bg: "bg-white"
                   },
                   {
+                    id: "faith",
                     icon: <Compass className="text-brand-taupe w-5 h-5" />,
                     title: "Audio Meditations",
                     desc: "Listen to relaxing breathing loop structures.",
@@ -791,30 +1399,47 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
                     bg: "bg-white"
                   },
                   {
+                    id: "settings",
                     icon: <Sliders className="text-brand-coral w-5 h-5" />,
                     title: "NDPR Compliance",
                     desc: "Export data models or verify secure encryptions.",
                     action: () => setActiveTab("settings"),
                     bg: "bg-white"
                   }
-                ].map((card, i) => (
-                  <motion.div 
-                    key={i} 
-                    onClick={card.action}
-                    whileHover={{ scale: 1.05, y: -4 }}
-                    whileTap={{ scale: 0.98 }}
-                    transition={{ type: "spring", stiffness: 350, damping: 15 }}
-                    className={`${card.bg} p-5 cursor-pointer border-2 border-slate-900 rounded-2xl shadow-[3px_3px_0px_0px_rgba(21,30,40,1)] hover:shadow-[5px_5px_0px_0px_rgba(21,30,40,1)] transition-all duration-150 flex flex-col justify-between h-40`}
-                  >
-                    <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 w-10 h-10 flex items-center justify-center">
-                      {card.icon}
-                    </div>
-                    <div>
-                      <h4 className="font-display font-bold text-slate-800 text-sm leading-tight">{card.title}</h4>
-                      <p className="text-slate-500 text-[11px] mt-1.5 leading-relaxed">{card.desc}</p>
-                    </div>
-                  </motion.div>
-                ))}
+                ].map((card, i) => {
+                  const isRestricted = user.isAnonymous === true && ["groups", "faith", "settings"].includes(card.id);
+                  return (
+                    <motion.div 
+                      key={i} 
+                      onClick={() => {
+                        if (isRestricted) {
+                          setRestrictAlertOpen(true);
+                          return;
+                        }
+                        card.action();
+                      }}
+                      whileHover={{ scale: 1.05, y: -4 }}
+                      whileTap={{ scale: 0.98 }}
+                      transition={{ type: "spring", stiffness: 350, damping: 15 }}
+                      className={`${card.bg} p-5 cursor-pointer border-2 border-slate-900 rounded-2xl shadow-[3px_3px_0px_0px_rgba(21,30,40,1)] hover:shadow-[5px_5px_0px_0px_rgba(21,30,40,1)] transition-all duration-150 flex flex-col justify-between h-40 relative`}
+                    >
+                      {isRestricted && (
+                        <span className="absolute top-3 right-3 bg-brand-coral/10 border border-brand-coral/30 text-brand-coral text-[8px] font-extrabold px-2 py-0.5 rounded uppercase font-mono tracking-wider">
+                          Locked
+                        </span>
+                      )}
+                      <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-100 w-10 h-10 flex items-center justify-center">
+                        {card.icon}
+                      </div>
+                      <div>
+                        <h4 className="font-display font-bold text-slate-800 text-sm leading-tight flex items-center gap-1.5">
+                          {card.title}
+                        </h4>
+                        <p className="text-slate-500 text-[11px] mt-1.5 leading-relaxed">{card.desc}</p>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
 
               {/* TWO COLUMN SUMMARY: Chart snapshot + Upcoming options */}
@@ -964,158 +1589,270 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
 
           {/* ================= TAB 2: CBT THERAPY CHAT ================= */}
           {activeTab === "chat" && (
-            <div className="grid grid-cols-1 md:grid-cols-12 gap-6 h-[calc(100vh-170px)] animate-fade-in text-slate-700">
+            <div className="flex flex-col gap-4 h-[calc(100vh-140px)] md:h-[calc(100vh-170px)] animate-fade-in text-slate-700">
               
-              {/* Sessions thread manager sidebar */}
-              <div className="md:col-span-3 bg-white p-4 border border-slate-200 rounded-2xl flex flex-col justify-between h-full">
-                <div className="space-y-4 flex-grow overflow-y-auto">
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                    <h3 className="font-display font-bold text-slate-800 text-xs">COUNSELLING REPLICAS</h3>
-                    <button 
-                      onClick={handleCreateNewChatThread}
-                      className="text-brand-coral hover:text-[#d36643] text-xs font-bold"
-                    >
-                      + NEW
-                    </button>
-                  </div>
-
-                  {chatSessions.length === 0 ? (
-                    <p className="text-slate-400 font-medium text-[11px] text-center pt-8">No counseling loops indexed.</p>
-                  ) : (
-                    <div className="space-y-1.5">
-                      {chatSessions.map(sess => (
-                        <div 
-                          key={sess.id}
-                          onClick={() => { setActiveSession(sess); setAlertText(null); }}
-                          className={`p-2.5 rounded-xl cursor-pointer transition border text-left flex justify-between items-center ${activeSession?.id === sess.id ? "bg-brand-cream border-brand-sage/40" : "border-slate-100 hover:bg-slate-50"}`}
-                        >
-                          <div className="truncate max-w-[120px]">
-                            <p className="font-semibold text-slate-800 truncate text-[11px]">{sess.title}</p>
-                            <p className="text-[9px] text-slate-400 font-mono mt-0.5">{new Date(sess.createdAt).toLocaleDateString()}</p>
-                          </div>
-                          
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (window.confirm("Delete this thread permanently?")) {
-                                fetch(`/api/chat/sessions/${sess.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` }})
-                                  .then(() => {
-                                    loadTherapySessions();
-                                    if (activeSession?.id === sess.id) setActiveSession(null);
-                                  });
-                              }
-                            }}
-                            className="text-slate-300 hover:text-red-500 p-1"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      ))}
-                    </div>
+              {/* Segmented sub tabs for mobile thumb navigation */}
+              <div className="flex md:hidden bg-slate-200 p-1 rounded-xl shrink-0 select-none">
+                <button
+                  type="button"
+                  onClick={() => setChatSubView("chat")}
+                  className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition active:scale-[0.98] ${chatSubView === "chat" ? "bg-white text-slate-900 shadow-xs" : "text-slate-505 text-slate-500 hover:text-slate-800"}`}
+                >
+                  Active CBT Chat
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setChatSubView("history")}
+                  className={`flex-1 py-1.5 text-center text-xs font-bold rounded-lg transition relative active:scale-[0.98] ${chatSubView === "history" ? "bg-white text-slate-900 shadow-xs" : "text-slate-505 text-slate-500 hover:text-slate-800"}`}
+                >
+                  Sessions Loop History
+                  {chatSessions.length > 0 && (
+                    <span className="absolute top-1.5 right-4 w-1.5 h-1.5 rounded-full bg-brand-coral pulse-heart" />
                   )}
-                </div>
-
-                {activeSession && (
-                  <button
-                    onClick={handleFinishChatThread}
-                    className="w-full bg-[#cbd5e1] hover:bg-indigo-50 border border-slate-300 text-slate-800 font-bold py-2 rounded-xl text-xs mt-4"
-                  >
-                    Finish Thread Log Wellness
-                  </button>
-                )}
+                </button>
               </div>
 
-              {/* Main chat viewport */}
-              <div className="md:col-span-9 bg-white border border-slate-200 rounded-2xl overflow-hidden flex flex-col justify-between h-full">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 flex-1 min-h-0">
                 
-                {/* Active header */}
-                <div className="bg-slate-50 border-b border-slate-100 px-5 py-3 flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-brand-sage animate-ping" />
-                    <span className="font-display font-semibold text-slate-800 text-xs">CBT AI Peer Helper</span>
-                  </div>
-                  <span className="bg-[#eef4f1] border border-brand-sage/10 text-brand-sage font-bold tracking-tight text-[10px] px-2.5 py-0.5 rounded-full select-none">
-                    MILITARY-GRADE SECURITY ACTIVE
-                  </span>
-                </div>
-
-                {/* Messages scrollarea */}
-                <div className="grow p-5 overflow-y-auto space-y-4">
-                  {activeSession ? (
-                    <>
-                      <div className="bg-[#FAF8F5] border border-brand-sage/10 text-slate-600 rounded-2xl p-4 space-y-2 text-[11px] max-w-sm mx-auto shadow-xs select-none">
-                        <p className="font-bold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 text-brand-sage" /> System CBT Session Guard</p>
-                        <p className="leading-relaxed">This chatbot is a supportive companion designed to stand in your corner. Let's trace any distress, work-issues, or mental weights you are carrying. Take standard slow deep breaths while typing.</p>
-                      </div>
-
-                      {activeSession.messages.map((msg, i) => (
-                        <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                          <div className={`max-w-md rounded-2xl p-3.5 shadow-xs space-y-1 ${msg.role === "user" ? "bg-slate-900 border border-slate-800 text-white" : msg.isCrisisMatch ? "bg-red-50 border border-red-200 text-slate-800" : "bg-brand-cream border border-brand-sage/20 text-slate-800"}`}>
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
-                              {msg.role === "user" ? "YOU" : "TalkItThrough AI"}
-                            </p>
-                            <p className="leading-relaxed whitespace-pre-wrap text-xs font-semibold">{msg.content}</p>
-                            <p className="text-[9px] text-slate-400 text-right mt-1.5 font-mono">
-                              {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-
-                      {chatLoading && (
-                        <div className="flex justify-start">
-                          <div className="bg-brand-cream border border-brand-sage/2 w-48 rounded-2xl p-4 flex items-center justify-center gap-2">
-                            <span className="w-1.5 h-1.5 rounded-full bg-brand-coral animate-ping" />
-                            <span className="text-xs text-slate-500 font-bold">Compass AI is writing...</span>
-                          </div>
-                        </div>
-                      )}
-                      
-                      <div ref={chatEndRef} />
-                    </>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center gap-2 max-w-xs mx-auto">
-                      <MessageSquare className="w-12 h-12 opacity-30 animate-pulse" />
-                      <p className="font-bold">Access a CBT chat room</p>
-                      <p className="text-[11px] opacity-75">Click on the top right "+ NEW" button, rate your pre-chat mood state, and speak with TalkItThrough AI.</p>
-                      <button onClick={handleCreateNewChatThread} className="bg-brand-coral hover:bg-[#d46643] text-white text-xs font-bold px-4 py-2 mt-2 rounded-xl shadow-xs">
-                        Rate & Create Session
+                {/* Sessions thread manager sidebar */}
+                <div className={`${chatSubView === "history" ? "flex" : "hidden md:flex"} md:col-span-3 bg-white p-4 border border-slate-200 rounded-2xl flex-col justify-between h-full min-h-0`}>
+                  <div className="space-y-4 flex-grow overflow-y-auto">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                      <h3 className="font-display font-bold text-slate-800 text-xs">COUNSELLING REPLICAS</h3>
+                      <button 
+                        onClick={handleCreateNewChatThread}
+                        className="text-brand-coral hover:text-[#d36643] text-xs font-bold px-2 py-1 rounded"
+                      >
+                        + NEW
                       </button>
                     </div>
+
+                    {chatSessions.length === 0 ? (
+                      <p className="text-slate-400 font-medium text-[11px] text-center pt-8">No counseling loops indexed.</p>
+                    ) : (
+                      <div className="space-y-1.5 w-full">
+                        {chatSessions.map(sess => (
+                          <div 
+                            key={sess.id}
+                            onClick={() => { 
+                              setActiveSession(sess); 
+                              setAlertText(null); 
+                              setChatSubView("chat"); // Auto focus conversational pane on selection
+                            }}
+                            className={`p-2.5 rounded-xl cursor-pointer transition border text-left flex justify-between items-center ${activeSession?.id === sess.id ? "bg-brand-cream border-brand-sage/40" : "border-slate-100 hover:bg-slate-50"}`}
+                          >
+                            <div className="truncate max-w-[120px]">
+                              <p className="font-semibold text-slate-800 truncate text-[11px]">{sess.title}</p>
+                              <p className="text-[9px] text-slate-400 font-mono mt-0.5">{new Date(sess.createdAt).toLocaleDateString()}</p>
+                            </div>
+                            
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (window.confirm("Delete this thread permanently?")) {
+                                  fetch(`/api/chat/sessions/${sess.id}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` }})
+                                    .then(() => {
+                                      loadTherapySessions();
+                                      if (activeSession?.id === sess.id) setActiveSession(null);
+                                    });
+                                }
+                              }}
+                              className="text-slate-300 hover:text-red-500 p-1.5 rounded"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {activeSession && (
+                    <button
+                      onClick={handleFinishChatThread}
+                      className="w-full bg-[#cbd5e1] hover:bg-slate-200 border border-slate-300 text-slate-800 font-bold py-2.5 rounded-xl text-xs mt-4 transition active:scale-[0.98]"
+                    >
+                      Finish Thread Log Wellness
+                    </button>
                   )}
                 </div>
 
-                {/* Input form */}
-                {activeSession && (
-                  <form onSubmit={handleSendMessage} className="bg-slate-50 border-t border-slate-100 p-4 flex gap-2">
-                    <input
-                      required
-                      type="text"
-                      placeholder="Type your message, brother. Speak openly..."
-                      value={messageInput}
-                      onChange={(e) => setMessageInput(e.target.value)}
-                      className="grow bg-white border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-brand-coral placeholder-slate-400 font-semibold text-slate-700"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        alert("AUDIO MICROPHONE INITIATIVE: Speech-to-text operates using physical browser inputs. Please grant microphone privileges if prompted.");
-                        setMessageInput("I feel high pressure regarding target outcomes at work today.");
-                      }}
-                      className="bg-slate-200 text-slate-600 hover:bg-slate-300 p-2.5 rounded-xl transition"
-                      title="Simulate Voice Input"
-                    >
-                      <Mic className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="submit"
-                      className="bg-brand-coral hover:bg-[#d66b49] text-white p-2.5 rounded-xl shadow transition"
-                    >
-                      <Send className="w-4 h-4" />
-                    </button>
-                  </form>
-                )}
+                {/* Main chat viewport */}
+                <div className={`${chatSubView === "chat" ? "flex" : "hidden md:flex"} md:col-span-9 bg-white border border-slate-200 rounded-2xl overflow-hidden flex-col justify-between h-full min-h-0`}>
+                  
+                  {/* Active header with dynamic language selector */}
+                  <div className="bg-slate-50 border-b border-slate-100 px-4 md:px-5 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shrink-0 select-none">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping" />
+                      <div>
+                        <span className="font-display font-black text-slate-800 text-xs block">CBT AI Peer Helper</span>
+                        <span className="text-[10px] text-slate-400 font-bold block">Secure Multilingual Channel</span>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 w-full sm:w-auto mt-1 sm:mt-0">
+                      <label htmlFor="active-chat-lang-select" className="text-[10px] uppercase font-mono tracking-wider font-extrabold text-slate-500 whitespace-nowrap hidden lg:inline">Active Accent:</label>
+                      <select
+                        id="active-chat-lang-select"
+                        value={chatLanguage}
+                        onChange={(e) => {
+                          const newLang = e.target.value;
+                          setChatLanguage(newLang);
+                          stopSpeakingText();
+                        }}
+                        className="bg-white border-2 border-slate-900 text-slate-800 font-extrabold px-3 py-1.5 rounded-xl cursor-pointer text-xs focus:ring focus:ring-brand-coral/25 focus:outline-none w-full sm:w-auto"
+                      >
+                        {LANGUAGES_LIST.map((lang) => (
+                          <option key={lang.code} value={lang.code}>
+                            {lang.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
 
+                  {/* Messages scrollarea */}
+                  <div className="grow p-4 md:p-5 overflow-y-auto space-y-4">
+                    {activeSession ? (
+                      <>
+                        <div className="bg-[#FAF8F5] border border-brand-sage/10 text-slate-600 rounded-2xl p-4 space-y-2 text-[11px] max-w-sm mx-auto shadow-xs select-none">
+                          <p className="font-bold flex items-center gap-1"><Sparkles className="w-3.5 h-3.5 text-brand-sage" /> System CBT Session Guard</p>
+                          <p className="leading-relaxed">This chatbot is a supportive companion designed to stand in your corner. Let's trace any distress, work-issues, or mental weights you are carrying. Take standard slow deep breaths while typing.</p>
+                        </div>
+
+                        {activeSession.messages.map((msg, i) => (
+                          <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
+                            <div className={`max-w-[85%] md:max-w-md rounded-2xl p-3.5 shadow-xs space-y-1 relative group ${
+                              msg.role === "user" 
+                                ? "bg-slate-900 border border-slate-850 text-white" 
+                                : msg.isCrisisMatch 
+                                  ? "bg-red-50 border border-red-200 text-slate-800" 
+                                  : "bg-brand-cream border border-brand-sage/20 text-slate-800"
+                            }`}>
+                              <div className="flex justify-between items-start gap-2">
+                                <p className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                                  {msg.role === "user" ? "YOU" : "TalkItThrough AI"}
+                                </p>
+                                
+                                {msg.role === "model" && (
+                                  <button
+                                    type="button"
+                                    onClick={() => speakText(msg.content)}
+                                    className="p-1 rounded-lg hover:bg-slate-200 transition-colors text-slate-500 hover:text-slate-950 cursor-pointer"
+                                    title="Speak Response Aloud"
+                                  >
+                                    <Volume2 className={`w-3.5 h-3.5 ${isSpeaking ? "animate-bounce text-brand-blue" : ""}`} />
+                                  </button>
+                                )}
+                              </div>
+                              
+                              <p className="leading-relaxed whitespace-pre-wrap text-xs font-semibold">{msg.content}</p>
+                              
+                              <p className="text-[9px] text-slate-400 text-right mt-1.5 font-mono">
+                                {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          </div>
+                        ))}
+
+                        {chatLoading && (
+                          <div className="flex justify-start">
+                            <div className="bg-brand-cream border border-brand-sage/2 w-48 rounded-2xl p-4 flex items-center justify-center gap-2">
+                              <span className="w-1.5 h-1.5 rounded-full bg-brand-coral animate-ping" />
+                              <span className="text-xs text-slate-500 font-bold">Compass AI is writing...</span>
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div ref={chatEndRef} />
+                      </>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center h-full text-slate-400 text-center gap-2 max-w-xs mx-auto">
+                        <MessageSquare className="w-12 h-12 opacity-30 animate-pulse" />
+                        <p className="font-bold">Access a CBT chat room</p>
+                        <p className="text-[11px] opacity-75">Click on the top right "+ NEW" button, rate your pre-chat mood state, and speak with TalkItThrough AI.</p>
+                        <button onClick={handleCreateNewChatThread} className="bg-brand-coral hover:bg-[#d46643] text-white text-xs font-bold px-4 py-2 mt-2 rounded-xl shadow-xs">
+                          Rate & Create Session
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Input form */}
+                  {activeSession && (
+                    <div className="bg-slate-50 border-t border-slate-100 p-4 shrink-0 space-y-2">
+                      <form onSubmit={handleSendMessage} className="flex gap-2">
+                        <input
+                          required
+                          type="text"
+                          placeholder={isListening ? "Listening silently... speak into microphone" : "Type your message or click microphone..."}
+                          value={messageInput}
+                          onChange={(e) => setMessageInput(e.target.value)}
+                          disabled={isListening}
+                          className="grow bg-white border border-slate-200 rounded-xl px-4 py-3 focus:outline-none focus:ring-1 focus:ring-brand-coral placeholder-slate-400 font-semibold text-slate-1500 text-slate-700 text-xs disabled:bg-slate-100 disabled:text-slate-500"
+                        />
+                        
+                        {/* Mic Button with recording animation feedback */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isListening) {
+                              stopSpeechRecognition();
+                            } else {
+                              startSpeechRecognition();
+                            }
+                          }}
+                          className={`p-3 rounded-xl border transition cursor-pointer active:scale-95 flex items-center justify-center gap-1 shrink-0 ${
+                            isListening
+                              ? "bg-red-500 text-white border-red-500 animate-pulse font-bold"
+                              : "bg-slate-200 hover:bg-slate-300 border-transparent text-slate-700"
+                          }`}
+                          title={isListening ? "Stop voice listening" : "Speak using Microphone"}
+                        >
+                          <Mic className="w-4 h-4" />
+                          {isListening && <span className="text-[10px] uppercase font-mono tracking-widest px-1">Active</span>}
+                        </button>
+
+                        {/* Stop Narrative / Synthesis button */}
+                        {(isSpeaking || isListening) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              stopSpeakingText();
+                              stopSpeechRecognition();
+                            }}
+                            className="bg-slate-900 text-[#FFF200] hover:bg-slate-850 p-3 rounded-xl border border-slate-900 transition cursor-pointer active:scale-95 shrink-0 flex items-center justify-center"
+                            title="Stop all speak audio output & mic intake"
+                          >
+                            <span className="text-[10px] uppercase font-mono tracking-widest font-black whitespace-nowrap px-1">🛑 Stop Audio</span>
+                          </button>
+                        )}
+                        
+                        <button
+                          type="submit"
+                          className="bg-brand-coral hover:bg-[#d66b49] text-white p-3 rounded-xl shadow transition cursor-pointer active:scale-95"
+                        >
+                          <Send className="w-4 h-4" />
+                        </button>
+                      </form>
+
+                      {/* Unified footer notification notes */}
+                      <div className="flex flex-wrap items-center justify-between text-[10px] text-slate-400 select-none px-1 pt-0.5 leading-none gap-2">
+                        <div className="flex items-center gap-1 text-slate-400">
+                          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
+                          <span>CBT Assistant Engine</span>
+                        </div>
+                        {asrFallbackTip && (
+                          <div className="text-amber-600 font-semibold italic truncate">
+                            {asrFallbackTip}
+                          </div>
+                        )}
+                        <span className="font-semibold text-[9.5px] text-right font-mono text-slate-400">Powered by AVA AI & Gemini</span>
+                      </div>
+                    </div>
+                  )}
+
+                </div>
               </div>
             </div>
           )}
@@ -1140,7 +1877,7 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
                   {moodSubmitted ? (
                     <div className="bg-emerald-50 text-emerald-800 p-4 border border-emerald-150 rounded-xl text-xs text-center space-y-1">
                       <p className="font-bold">Log Recorded Successfully!</p>
-                      <p>Thank you, brother. Tracing results regularly develops clean subconscious awareness.</p>
+                      <p>Thank you, {user.gender === "Female" ? "sister" : user.gender === "Male" ? "brother" : "friend"}. Tracing results regularly develops clean subconscious awareness.</p>
                     </div>
                   ) : (
                     <form onSubmit={handleLogManualMood} className="space-y-4 text-xs font-semibold">
@@ -1437,7 +2174,7 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
                   <input
                     required
                     type="text"
-                    placeholder="Contribute courageously and supportively to fellow brothers..."
+                    placeholder={`Contribute courageously and supportively to fellow ${user.gender === "Female" ? "sisters" : user.gender === "Male" ? "brothers" : "peers"}...`}
                     value={groupInput}
                     onChange={(e) => setGroupInput(e.target.value)}
                     className="grow bg-white border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:ring-1 focus:ring-brand-coral placeholder-slate-400 font-semibold text-slate-700"
@@ -1953,7 +2690,22 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
                 </div>
               )}
 
-              <form onSubmit={(e) => { e.preventDefault(); setSettingsSuccess(true); setTimeout(() => setSettingsSuccess(false), 3000); }} className="space-y-4">
+              <form 
+                onSubmit={(e) => { 
+                  e.preventDefault(); 
+                  const updatedUser = { 
+                    ...user, 
+                    preferredLanguage: settingsForm.preferredLanguage,
+                    faithPreference: settingsForm.faithPreference,
+                    gender: settingsForm.gender,
+                    phone: settingsForm.phone
+                  };
+                  onUserUpdate(updatedUser);
+                  setSettingsSuccess(true); 
+                  setTimeout(() => setSettingsSuccess(false), 3000); 
+                }} 
+                className="space-y-4"
+              >
                 
                 <div className="space-y-1.5 focus-within:text-brand-coral">
                   <label className="text-slate-650">Select Preferred Language Dialect</label>
@@ -1979,6 +2731,19 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
                     <option value="Christian">Christian Coping Meditations</option>
                     <option value="Muslim">Islamic Coping Dhikr</option>
                     <option value="Other">Other / Multifaith Compass</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5 focus-within:text-brand-coral">
+                  <label className="text-slate-650">Gender Identity</label>
+                  <select 
+                    value={settingsForm.gender} 
+                    onChange={(e) => setSettingsForm(prev => ({ ...prev, gender: e.target.value as any }))}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 font-bold focus:outline-none focus:ring-1 focus:ring-brand-coral"
+                  >
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Rather not say">Rather not say</option>
                   </select>
                 </div>
 
@@ -2031,6 +2796,53 @@ export default function AppDashboard({ token, user, onLogout, onUserUpdate }: Ap
 
         </div>
       </main>
+
+      {/* RESTRICTED ACCESS MODAL */}
+      <AnimatePresence>
+        {restrictAlertOpen && (
+          <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white border-2 border-slate-900 rounded-3xl p-6 max-w-sm w-full shadow-[6px_6px_0px_0px_rgba(21,30,40,1)] text-center relative"
+            >
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 w-20 h-20 bg-[#FFF200] border-2 border-slate-900 rounded-full flex items-center justify-center shadow-md">
+                <AlertCircle className="w-10 h-10 text-slate-900 animate-bounce" />
+              </div>
+
+              <div className="mt-10 space-y-4">
+                <h3 className="font-display font-black text-xl text-slate-00 tracking-tight">Access Locked</h3>
+                <p className="text-slate-600 text-xs leading-relaxed font-semibold">
+                  This action is reserved for registered users only.
+                </p>
+                <div className="text-slate-400 text-[10px] leading-relaxed space-y-1">
+                  <p>Guests / Sneak-peek accounts can fully experience the AI therapy chat and mood logging tools.</p>
+                  <p>Register a full profile to access boards, faith alignment, and GDPR settings.</p>
+                </div>
+
+                <div className="pt-2 flex flex-col gap-2">
+                  <button
+                    onClick={() => setRestrictAlertOpen(false)}
+                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-mono text-xs font-bold py-2.5 rounded-xl border-2 border-transparent transition shadow cursor-pointer"
+                  >
+                    Got it, thanks!
+                  </button>
+                  <button
+                    onClick={() => {
+                      setRestrictAlertOpen(false);
+                      onLogout(true);
+                    }}
+                    className="w-full bg-brand-coral hover:bg-red-800 text-white font-mono text-xs font-bold py-2.5 rounded-xl shadow border-2 border-slate-900 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    Register Full Profile
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
     </div>
   );
