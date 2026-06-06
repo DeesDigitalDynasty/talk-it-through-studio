@@ -4,9 +4,7 @@
       "source": "/api/:path*",
       "destination": "https://talk-it-through-studio.onrender.com/api/:path*"
     }
-  ]
-}
-{
+  ],
   "headers": [
     {
       "source": "/service-worker.js",
