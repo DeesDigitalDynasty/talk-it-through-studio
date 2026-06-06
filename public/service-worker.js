@@ -1,36 +1,24 @@
-// public/service-worker.js
+// public/service-worker.js - Lightweight version for Talk It Through
 const CACHE_NAME = 'talk-it-through-v1';
-const OFFLINE_URL = '/offline.html';
-
-const STATIC_ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
-];
 
 self.addEventListener('install', (event) => {
-  console.log('🚀 Talk It Through SW installing...');
-  event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
-  );
+  console.log('✅ Talk It Through SW installed');
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
+  console.log('✅ Talk It Through SW activated');
   event.waitUntil(self.clients.claim());
 });
 
+// Basic cache-first for offline support
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
   event.respondWith(
-    fetch(event.request)
-      .then(response => {
-        const responseClone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(event.request, responseClone));
-        return response;
+    caches.match(event.request)
+      .then((cachedResponse) => {
+        return cachedResponse || fetch(event.request);
       })
-      .catch(() => caches.match(event.request))
   );
 });
-
-console.log('🧠 Talk It Through Service Worker Ready');
