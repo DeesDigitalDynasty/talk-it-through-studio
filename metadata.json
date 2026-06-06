@@ -1,6 +1,27 @@
 {
-  "name": "TalkItThrough",
-  "description": "A mental health support platform for Nigerian men combining AI therapy chat, crisis help, peer support, faith resources, and legal compliance.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "name": "Talk It Through Studio",
+  "short_name": "TalkItThrough",
+  "description": "A mental health support platform providing guided conversations, wellness resources, and emotional support tools.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#4f46e5",
+  "lang": "en",
+  "scope": "/",
+  "id": "/",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
 }
