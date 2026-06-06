@@ -1,15 +1,17 @@
 {
-  "name": "Talk It Through Studio",
+  "name": "Talk It Through",
   "short_name": "TalkItThrough",
   "description": "A mental health support platform providing guided conversations, wellness resources, and emotional support tools.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#4f46e5",
+  "background_color": "#0f172a",
+  "theme_color": "#22c55e",
   "lang": "en",
   "scope": "/",
   "id": "/",
   "orientation": "portrait-primary",
+  "categories": ["health", "lifestyle", "social", "productivity"],
+
   "icons": [
     {
       "src": "/icons/icon-192x192.png",
@@ -27,47 +29,46 @@
 
   "screenshots": [
     {
-      "src": "public/screenshots/AI Chat.png",
+      "src": "/screenshots/AI Chat.png",
       "sizes": "1365x678",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide"
     },
     {
-      "src": "public/screenshots/CBT modal.png",
+      "src": "/screenshots/CBT modal.png",
       "sizes": "1365x727",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide"
     },
     {
-      "src": "public/screenshots/Charity shop & Donate.png",
+      "src": "/screenshots/Charity shop & Donate.png",
       "sizes": "1365x679",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide"
     },
     {
-      "src": "public/screenshots/Dashboard.png",
+      "src": "/screenshots/Dashboard.png",
       "sizes": "1365x681",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide"
     },
     {
-      "src": "public/screenshots/Helpline & Resources.png",
+      "src": "/screenshots/Helpline & Resources.png",
       "sizes": "1365x682",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide"
     },
     {
-      "src": "public/screenshots/Home.png",
+      "src": "/screenshots/Home.png",
       "sizes": "1365x682",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide"
     },
     {
-      "src": "public/screenshots/Registration.png",
+      "src": "/screenshots/Registration.png",
       "sizes": "1365x682",
       "type": "image/png",
-      "purpose": "any maskable"
+      "form_factor": "wide"
     }
-    ],
-    "categories": ["health", "support", "social"]
+  ]
 }
