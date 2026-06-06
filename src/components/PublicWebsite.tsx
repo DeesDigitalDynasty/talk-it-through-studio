@@ -609,7 +609,7 @@ export default function PublicWebsite({ onStartChat, onSignUpClick }: PublicWebs
               <div className="flex flex-col md:flex-row items-center md:items-start gap-8 border-b border-slate-200 pb-10 mt-6">
                 <div className="w-full md:w-1/3 text-center">
                   <img 
-                    src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop&q=80" 
+                    src="assets\Founder.jpg" 
                     alt="Founder Portrait Placeholder" 
                     className="w-40 h-40 object-cover rounded-none shadow-md border-4 border-white mx-auto grayscale"
                   />
